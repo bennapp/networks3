@@ -28,26 +28,21 @@ public class Test{
 		//test is you can parse a hashtable with underflow, yes
 		//test is I can hash nodes and edges, yes, and yes
 		try{
-			byte[] tablebytes = new byte[1024]; 
+			// byte[] tablebytes = new byte[1024]; 
 			Hashtable<Edge, Integer> testHash = new Hashtable<Edge, Integer>();
 			Node testNode = new Node(InetAddress.getByName("255.255.255.255"), 2000);
 			Node testNode2 = new Node(InetAddress.getByName("255.255.1.255"), 2002);
 			Edge edge = new Edge(testNode, testNode2);
 			testHash.put(edge, 5);
+			p(testHash);
 			
 			//tablebytes = serialize(testHash);
 			//@SuppressWarnings("unchecked")
 			//Hashtable<Edge, Integer> newHash = ((Hashtable<Edge, Integer>)deserialize(tablebytes));
 
-			p(testHash);
-			Edge edge2 = new Edge(testNode2, testNode);
-
-			p(edge.equals(edge2));
-			p(edge.hashCode());
-			p(edge2.hashCode());
-
-			testHash.put(edge2, 10);
-
+			Node testNodea = new Node(InetAddress.getByName("255.255.255.255"), 2000);
+			Node testNode2a = new Node(InetAddress.getByName("255.255.1.255"), 2002);
+			Edge edge2 = new Edge(testNode2a, testNodea);
 			p(testHash.get(edge2));
 
 		} catch (Exception e){

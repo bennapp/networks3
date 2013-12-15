@@ -10,11 +10,15 @@ public class Edge{
 		this.b = b;
 	}
 
+	public String toString(){
+		return a.port + ":" + b.port;
+	}
+
 	@Override
 	public int hashCode(){
 		int hash = 1;
-		hash = hash * 13 + a.port + b.port;
-		hash = hash * 17 + a.ip.hashCode() + b.ip.hashCode();
+		hash = hash * 13 + (a.port + b.port);
+		hash = hash * 17 + (a.ip.hashCode() + b.ip.hashCode());
 		return hash;
 	}
 
