@@ -9,10 +9,15 @@ public class BFClient implements Runnable{
 	public static final int INFINITY = 1000000000; //max weight 1,147,483,647
 	public String threadType;
 	public static long timeout;
+	public static int itimeout;
+	public static long time;
+	public static long prevTime;
 	public static int localPort;
 	public static InetAddress ip;
 	public static Hashtable<Node, Integer> routingTable = new Hashtable<Node, Integer>();
-	public static int update;
+	public static Hashtable<Node, Integer> nodeDownTable = new Hashtable<Node, Integer>();
+	public static Hashtable<Node, Integer> nodeUpTable = new Hashtable<Node, Integer>();
+	public static Boolean update;
 	public static Hashtable<Node, Long> timeoutTable = new Hashtable<Node, Long>();
 	public static Hashtable<Edge, Integer> graph = new Hashtable<Edge, Integer>();
 	
@@ -23,7 +28,7 @@ public class BFClient implements Runnable{
 	public static void main(String[] args){
 		if(args.length < 4){
 			System.err.println("Wrong nuber of arguments try");
-			System.err.println("%> ./bfclient localport timeout [ipaddress1 port1 weight1 ...]");
+			System.err.println("%> ./bfclient localport timeout [localhost port1 weight1 ...]");
 			System.exit(0);
 		}
 		if(((args.length - 2) % 3) != 0){
@@ -33,11 +38,12 @@ public class BFClient implements Runnable{
 		}
 		
 		try {
-			// ip = InetAddress.getByAddress(InetAddress.getLocalHost().getAddress());
 			ip = getRawIP("localhost");
 			localPort = Integer.parseInt(args[0]);
 			timeout = Long.parseLong(args[1]) * 1000;
-			update = 1;
+			itimeout = Integer.parseInt(args[1]);
+			update = true;
+			prevTime = System.currentTimeMillis();
 		} catch (Exception e){
 			e.printStackTrace();
 		}
@@ -48,6 +54,7 @@ public class BFClient implements Runnable{
 			while(index > 2){
 				Node node = new Node(getRawIP(args[index-2]), Integer.parseInt(args[index-1]));
 				routingTable.put(node, Integer.parseInt(args[index]));
+				timeoutTable.put(node, System.currentTimeMillis());
 				index = index - 3;
 			}
 		} catch (Exception e){
@@ -67,22 +74,61 @@ public class BFClient implements Runnable{
 		new Thread(new BFClient("send")).start();
 		new Thread(new BFClient("algorithm")).start();
 		//new Thread(new BFClient("timer")).start();
+		//new Thread(new BFClient("time")).start();
 
 		//handle commands
 		BufferedReader stdIn = new BufferedReader(new InputStreamReader(System.in));
+
 		String input;
 		try{
+			//LINKUP localhost 9002
+			//LINKDOWN localhost 9002
 			while((input = stdIn.readLine()) != null ){
 				if(input.startsWith("LINKUP")){
+					String[] inputs = input.split(" ");
+					try{
+						Node nodeUp = new Node(getRawIP(inputs[1]), Integer.parseInt(inputs[2]));
+						if(nodeDownTable.get(nodeUp) != null){
+							p("LINKingUP " + inputs[1] + " " +  inputs[2]);
+							graph.put(new Edge(me, nodeUp), nodeDownTable.get(nodeUp));
+							nodeUpTable.put(nodeUp, routingTable.get(nodeUp));
+							nodeDownTable.remove(nodeUp);
+						} else {
+							System.err.println("Client with ip " + inputs[1] + " and port " + inputs[2] + " has not been set using LINKDOWN");
+						}
 
+					} catch (Exception e){
+						e.printStackTrace();
+						System.err.println("Incorrect LINKUP args");
+					}
 				}
 				if(input.startsWith("LINKDOWN")){
-
+					String[] inputs = input.split(" ");
+					try{
+						Node nodeDown = new Node(getRawIP(inputs[1]), Integer.parseInt(inputs[2]));
+						p("LINKingDOWN " + inputs[1] + " " +  inputs[2]);
+						if (routingTable.get(nodeDown) != null) {
+							if(nodeUpTable.get(nodeDown) != null){
+								nodeUpTable.remove(nodeDown);
+							}
+							nodeDownTable.put(nodeDown, routingTable.get(nodeDown));
+							p(nodeDownTable);
+							graph.remove(new Edge(me, nodeDown));
+							graph.put(new Edge(me, nodeDown), INFINITY);
+						} else {
+							System.err.println("Client with ip " + inputs[1] + " and port " + inputs[2] + " is not known");
+						}
+					} catch (Exception e){
+						e.printStackTrace();
+						System.err.println("Incorrect LINKDOWN args");
+					}
+					
 				}
 				if(input.equals("SHOWRT")){
 
 				}
 				if(input.equals("CLOSE")){
+					p("Closing client");
 					System.exit(0);
 				}else{
 
@@ -93,13 +139,16 @@ public class BFClient implements Runnable{
 		}
 	}
 
+	//LINKDOWN localhost 9002
+	//LINKUP localhost 9002
 	public void run(){
 		if(threadType.equals("send")){
 			while(true){
-				if(true){
-					//send to everyone
-					for (Enumeration<Node> e = routingTable.keys(); e.hasMoreElements();){
-						Node to = e.nextElement();
+				p("sending");
+				for (Enumeration<Node> e = routingTable.keys(); e.hasMoreElements();){
+					Node to = e.nextElement();
+					Node me = new Node(ip, localPort);
+					if(routingTable.get(to) != INFINITY && (!to.equals(me))){
 						byte[] bytes = new byte[2400];//suitable for a network ~ 100, increase for a large network
 						byte[] ipbytes = ip.getAddress();
 						for(int i = 0; i<4; i++){
@@ -107,10 +156,25 @@ public class BFClient implements Runnable{
 						}
 						setInt(bytes, 4, localPort);
 						try{
-							byte[] tablebytes = serialize(routingTable);
-							for(int i = 0; i<tablebytes.length; i++){
-		  						 bytes[i+8] = tablebytes[i];
-		  					}
+							if(nodeDownTable.get(to) == null && nodeUpTable.get(to) == null){
+								byte[] tablebytes = serialize(routingTable);
+								for(int i = 0; i<tablebytes.length; i++){
+			  						 bytes[i+8] = tablebytes[i];
+			  					}
+							}
+							p(to);
+							p("node down table" + nodeUpTable);
+							if(nodeDownTable.get(to) != null){
+								p("sending down code!");
+								setInt(bytes, 8, 1337);
+							}
+							p("node up table" + nodeUpTable);
+							if(nodeUpTable.get(to) != null){
+								p("sending up code!");
+								setInt(bytes, 8, 9779);
+							}
+							
+							
 							DatagramPacket packet = new DatagramPacket(bytes, bytes.length, to.ip, to.port);
 							DatagramSocket datagramSocket = new DatagramSocket();
 							datagramSocket.send(packet);
@@ -118,9 +182,11 @@ public class BFClient implements Runnable{
 							errorSend.printStackTrace();
 						}
 					}
-					update--;
-					wait(2);
+
 				}
+				update = false;
+				wait(itimeout);
+				update = true;
 				//check if update
 			}
 		}
@@ -132,49 +198,104 @@ public class BFClient implements Runnable{
   					DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
   					listenSocket.receive(receivePacket);
   					byte[] bytes = receivePacket.getData();
-  					byte[] ipbytes = new byte[4];
-  					byte[] portbytes = new byte[4];
   					byte[] tablebytes = new byte[1024];
+  					//byte[] ipbytes = new byte[4];
+  					byte[] portbytes = new byte[4];
   					for(int i = 0; i< 4; i++){
-  						ipbytes[i] = bytes[i];
+  					//	ipbytes[i] = bytes[i];
   						portbytes[i] = bytes[i+4];
   					}
   					for(int i = 0; i<tablebytes.length; i++){
   						tablebytes[i] = bytes[i+8];
   					}
-  					InetAddress ipRec = InetAddress.getByAddress(ipbytes);
-  					int portRec = getInt(portbytes, 0);
-  					@SuppressWarnings("unchecked")
-					Hashtable<Node, Integer> receivedTable = ((Hashtable<Node, Integer>)deserialize(tablebytes));
-					//p("this is te receivedTable");
-					//p(receivedTable);
-					//p("graph before" + graph);
+  					InetAddress ipRec = receivePacket.getAddress();//InetAddress.getByAddress(ipbytes);
+  					int portRec = getInt(portbytes, 0); //receivePacket.getPort(); 
 					Node from = new Node(ipRec, portRec);
-					for (Enumeration<Node> e = receivedTable.keys(); e.hasMoreElements();){
-						Node to = e.nextElement();
-						Edge toFrom = new Edge(to, from);
-
-						// p(graph.contains(toFrom));
-						// for (Enumeration<Edge> e2 = graph.keys(); e2.hasMoreElements();){
-						// 	Edge edge = e2.nextElement();
-						// 	p("edge   " + edge.a.ip );
-						// 	p("toFrom " + toFrom.a.ip );
-						// 	p("edge   " + edge.a.port );
-						// 	p("toFrom " + toFrom.a.port );
-						// 	p("edge   " + edge.b.ip );
-						// 	p("toFrom " + toFrom.b.ip );
-						// 	p("edge   " + edge.b.port );
-						// 	p("toFrom " + toFrom.b.port );
-						// 	p("edge   " + edge.hashCode() );
-						// 	p("toFrom " + toFrom.hashCode() );
-						// 	p("edge and toFrom " + edge.equals(toFrom) );
-						// }
-
-						if(graph.get(toFrom) == null){
-							graph.put(toFrom, receivedTable.get(to));
+					Node me = new Node(ip, localPort);
+  					if(getInt(bytes, 8) == 1337){
+  						if (routingTable.get(from) != null) {
+							if(nodeUpTable.get(from) == null){
+								nodeDownTable.put(from, routingTable.get(from));
+								graph.remove(new Edge(me, from));
+								graph.put(new Edge(me, from), INFINITY);
+							}
 						}
-					}
+  					} else if(getInt(bytes, 8) == 9779){
+  						p("recieved code");
+  						graph.put(new Edge(me, from), nodeDownTable.get(from));
+  						nodeDownTable.remove(from);
+  					} else {
+  						if(nodeDownTable.get(from) != null){
+  							//
+  						}else{
+  							if(nodeUpTable.contains(from)){
+  								nodeUpTable.remove(from);
+  							}
+		  					@SuppressWarnings("unchecked")
+							Hashtable<Node, Integer> receivedTable = ((Hashtable<Node, Integer>)deserialize(tablebytes));
+							//p("this is te receivedTable");
+							//p(receivedTable);
+							//p("graph before" + graph);
+							p("portRec " + portRec);
+							// p("receivedTable" + receivedTable);
+							for (Enumeration<Node> e = receivedTable.keys(); e.hasMoreElements();){
+								Node to = e.nextElement();
+								if(to.equals(me)){
+									//routingTable.put(from, receivedTable.get(to));
+									timeoutTable.put(from, System.currentTimeMillis());
+								}
+
+								Edge toFrom = null;
+								if(to.link == null){
+									toFrom = new Edge(to, from);
+								} else {
+									toFrom = new Edge(to, from, to.link);
+								}
+								//p("to.port looking for 9002" + to.port);
+								//p("to.port value = " + receivedTable.get(toFrom));
+
+								if(to.link != null && graph.get(to) != null){
+									if(graph.get(to) == INFINITY && to.link.equals(me)){
+									} else {
+										graph.put(toFrom, receivedTable.get(to));
+									}
+								} else {
+									graph.put(toFrom, receivedTable.get(to));
+								}
+								//check if any links went to infinity
+								if(receivedTable.get(to) == INFINITY){
+									for (Enumeration<Edge> e2 = graph.keys(); e2.hasMoreElements();){
+										Edge edge = e2.nextElement();
+										if(edge.hasLink()){
+											if(edge.link == to){
+												graph.put(edge, INFINITY);
+											}
+										}
+							 		}
+								}
+								//check if neighbors link to eachother to a node that is infinity
+								for (Enumeration<Node> e2 = routingTable.keys(); e2.hasMoreElements();){
+									Node to2 = e2.nextElement();
+									if(to2.link != null){
+										if(toFrom.hasLink()){
+											if(to.equals(to2)){
+												p("to = " + to);
+												p("to2 = " + to2);
+												if(to.link.equals(me) && to2.link.equals(from)){
+													p("test3");
+													graph.remove(new Edge(me, to));
+													graph.remove(new Edge(from, to));
+													graph.put(new Edge(me, to), INFINITY);
+													graph.put(new Edge(from, to), INFINITY);
+												}
+											}
+										}
+									}
+								}
+							}
+  						}
 					// p("graph now = " + graph);
+  					} //else for linkdown
   				}
   			} catch (Exception e){
   				e.printStackTrace();
@@ -182,16 +303,49 @@ public class BFClient implements Runnable{
 		}
 		if(threadType.equals("algorithm")){
 			while(true){
-				Hashtable<Edge, Integer> tempGraph = graphDeepCopy(graph);
-				p("before" + tempGraph);
-				tempGraph = bellmanFord(tempGraph);
-				p("after " + tempGraph);
-				wait(5);
+				wait(1);
+
+				if(!update){
+					Hashtable<Edge, Integer> tempGraph = graphDeepCopy(graph);
+					Hashtable<Node, Integer> tempTable = routingDeepCopy(routingTable);
+					Hashtable<Node, Integer> oldTable = routingDeepCopy(routingTable);
+					// p("before" + tempGraph);
+					tempGraph = bellmanFord(tempGraph);
+					// p("after " + tempGraph);
+					
+					// p("this is tempGraph" + tempGraph);
+					// p("this is graph" + graph);
+					tempTable = updateRoutingTable(tempGraph);
+					// p("tempTable" + tempTable);
+					
+					//p("");
+					//p("oldTable" + oldTable);
+					p("routingTable" + routingTable);
+
+					//p("tables equal? = " + tempTable.equals(oldTable));
+					if(!tempTable.equals(oldTable)){
+						routingTable = routingDeepCopy(tempTable);
+						update = true;
+					}
+					//p("timeout table " + timeoutTable);
+					if(checkTimeOuts()){
+						p("hello");
+						update = true;
+					}
+				}
 			}
 		}
-		if(threadType.equals("timer")){
-
-		}
+		// if(threadType.equals("timer")){
+		// 	while(update == 0){
+		// 		if(checkTimeOuts()){
+		// 			p("hello");
+		// 			update++;
+		// 		}
+		// 		wait(3);
+		// 		p(timeoutTable);
+		// 	}
+		// }
+		
 	}
 
 	public static Hashtable<Edge, Integer> bellmanFord(Hashtable<Edge, Integer> graph){
@@ -226,15 +380,21 @@ public class BFClient implements Runnable{
 			for (Enumeration<Edge> e = graph.keys(); e.hasMoreElements();){
 				Edge to = e.nextElement();
 				Node b = to.a; Node c = to.b;
-				Edge aToB = new Edge(a, b); Edge aToC = new Edge(a, c);
+				Edge aToB = new Edge(a, b); Edge aToC = new Edge(a, c); 
+				Edge aToCLinkB = new Edge(a, c, b);
+				Edge aToBLinkC = new Edge(a, b, c);
 				if(graph.get(aToB) != null){
 					if(graph.get(aToB) + graph.get(to) < tempGraph.get(aToC)){
-						tempGraph.put(aToC, graph.get(aToB) + graph.get(to));
+						tempGraph.remove(aToCLinkB);
+						tempGraph.put(aToCLinkB, graph.get(aToB) + graph.get(to));
 					}
 				}
+				//p("has link" + aToBLinkC.hasLink());
+				//p(aToBLinkC);
 				if(graph.get(aToC) != null){
 					if(graph.get(aToC) + graph.get(to) < tempGraph.get(aToB)){
-						tempGraph.put(aToB, graph.get(aToC) + graph.get(to));
+						tempGraph.remove(aToBLinkC);
+						tempGraph.put(aToBLinkC, graph.get(aToC) + graph.get(to));
 					}
 				}
 			}
@@ -250,15 +410,65 @@ public class BFClient implements Runnable{
 		return tempGraph;
 	}
 
+	public static boolean checkTimeOuts(){
+		boolean timeouts = false;
+		Node me = new Node(ip, localPort);
+		for (Enumeration<Node> e = timeoutTable.keys(); e.hasMoreElements();){
+			Node node = e.nextElement();
+			if(nodeTimeOut(timeoutTable.get(node))){
+				timeouts = true;
+				routingTable.put(node, INFINITY);
+				p("node" + node.port);
+				p("me" + me.port);
+				// graph.remove(new Edge(node, me));
+				graph.put(new Edge(node, me), INFINITY);
+			}
+		}
+		return timeouts;
+	}
+
+	public static boolean nodeTimeOut(long nodeTime){
+		long timeNow = System.currentTimeMillis();
+		if((timeNow - nodeTime) > (timeout * 3)){
+			return true;
+		}
+		return false;
+	}
+
+	public static Hashtable<Node, Integer> updateRoutingTable(Hashtable<Edge, Integer> graph){
+		Hashtable<Node, Integer> tempTable = new Hashtable<Node, Integer>();
+		Node me = new Node(ip, localPort);
+		for (Enumeration<Edge> e = graph.keys(); e.hasMoreElements();){
+			Edge to = e.nextElement();
+			if(to.hasNode(me)){
+				Node from = to.otherNode(me);
+				//p("from port = " + from.port);
+				//p(graph.get(to));
+				if(to.hasLink()){
+					tempTable.put(new Node(from, to.link), graph.get(to));
+				} else {
+					tempTable.put(from, graph.get(to));
+				}
+			}
+		}
+		return tempTable;
+	}
+	public static Hashtable<Node, Integer> routingDeepCopy(Hashtable<Node, Integer> graph){
+		Hashtable<Node, Integer> tempTable = new Hashtable<Node, Integer>();
+		for (Enumeration<Node> e = graph.keys(); e.hasMoreElements();){
+						Node to = e.nextElement();
+						tempTable.put(to, graph.get(to));
+		}
+		return tempTable;
+	}
 	public static Hashtable<Edge, Integer> graphDeepCopy(Hashtable<Edge, Integer> graph){
 		Hashtable<Edge, Integer> tempGraph = new Hashtable<Edge, Integer>();
 		for (Enumeration<Edge> e = graph.keys(); e.hasMoreElements();){
-						Edge to = e.nextElement();
-						tempGraph.put(to, graph.get(to));
+			Edge to = e.nextElement();
+			tempGraph.put(to, graph.get(to));
 		}
 		return tempGraph;
 	}
-
 	public static InetAddress getRawIP(String ip){
 		InetAddress rawIp = null;
 		try{

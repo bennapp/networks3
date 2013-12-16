@@ -4,10 +4,21 @@ import java.io.*;
 public class Node implements Serializable{
 	public InetAddress ip;
 	public int port;
+	public Node link;
 
 	public Node(InetAddress ip, int port){
 		this.ip = ip;
 		this.port = port;
+	}
+
+	public Node(Node a, Node link){
+		this.ip = a.ip;
+		this.port = a.port;
+		this.link = link;
+	}
+
+	public String toString(){
+		return this.link == null ? this.port + "" : "" + this.port + "--" + this.link.port;
 	}
 
 	@Override
