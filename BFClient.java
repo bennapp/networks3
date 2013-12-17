@@ -16,9 +16,9 @@ public class BFClient implements Runnable{
 	public static InetAddress ip;
 	public static Hashtable<Node, Integer> routingTable = new Hashtable<Node, Integer>();
 	public static Hashtable<Node, Integer> nodeDownTable = new Hashtable<Node, Integer>();
-	public static Hashtable<Node, Integer> nodeDownTable2 = new Hashtable<Node, Integer>();
-	public static Hashtable<Node, Integer> nodeUpTable = new Hashtable<Node, Integer>();
-	public static Integer messageCount = 1;
+	// public static Hashtable<Node, Integer> nodeDownTable2 = new Hashtable<Node, Integer>();
+	// public static Hashtable<Node, Integer> nodeUpTable = new Hashtable<Node, Integer>();
+	// public static Integer messageCount = 1;
 	public static Boolean update;
 	public static Hashtable<Node, Long> timeoutTable = new Hashtable<Node, Long>();
 	public static Hashtable<Edge, Integer> graph = new Hashtable<Edge, Integer>();
@@ -30,12 +30,12 @@ public class BFClient implements Runnable{
 	public static void main(String[] args){
 		if(args.length < 4){
 			System.err.println("Wrong nuber of arguments try");
-			System.err.println("%> ./bfclient localport timeout [localhost port1 weight1 ...]");
+			System.err.println("%> java BFClient localport timeout [localhost port1 weight1 ...]");
 			System.exit(0);
 		}
 		if(((args.length - 2) % 3) != 0){
 			System.err.println("Wrong nuber of arguments try");
-			System.err.println("%> ./bfclient localport timeout [ipaddress1 port1 weight1 ...]");
+			System.err.println("%> java BFClient localport timeout [ipaddress1 port1 weight1 ...]");
 			System.exit(0);
 		}
 		
@@ -70,34 +70,29 @@ public class BFClient implements Runnable{
 			graph.put(new Edge(me, to), routingTable.get(to));
 		}
 
-		//p(routingTable);
 
 		new Thread(new BFClient("listen")).start();
 		new Thread(new BFClient("send")).start();
 		new Thread(new BFClient("algorithm")).start();
-		//new Thread(new BFClient("timer")).start();
-		//new Thread(new BFClient("time")).start();
 
 		//handle commands
 		BufferedReader stdIn = new BufferedReader(new InputStreamReader(System.in));
 
 		String input;
 		try{
-			//LINKUP localhost 9002
-			//LINKDOWN localhost 9002
 			while((input = stdIn.readLine()) != null ){
 				if(input.startsWith("LINKUP")){
 					String[] inputs = input.split(" ");
 					try{
 						Node nodeUp = new Node(getRawIP(inputs[1]), Integer.parseInt(inputs[2]));
 						if(nodeDownTable.get(nodeUp) != null){
-							messageCount = 1;
+							//messageCount = 1;
 							p("LINKingUP " + inputs[1] + " " +  inputs[2]);
-							p(nodeDownTable2.get(nodeUp));
-							graph.put(new Edge(me, nodeUp), nodeDownTable2.get(nodeUp));
-							nodeUpTable.put(nodeUp, routingTable.get(nodeUp));
+							// graph.put(new Edge(me, nodeUp), nodeDownTable2.get(nodeUp));
+							//nodeUpTable.put(nodeUp, routingTable.get(nodeUp));
+							graph.put(new Edge(me, nodeUp), nodeDownTable.get(nodeUp));
 							nodeDownTable.remove(nodeUp);
-							nodeDownTable2.remove(nodeUp);
+							//nodeDownTable2.remove(nodeUp);
 						} else {
 							System.err.println("Client with ip " + inputs[1] + " and port " + inputs[2] + " has not been set using LINKDOWN");
 						}
@@ -107,21 +102,19 @@ public class BFClient implements Runnable{
 						System.err.println("Incorrect LINKUP args");
 					}
 				}
+				//LINKUP localhost 9001
+				//LINKDOWN localhost 9001
 				if(input.startsWith("LINKDOWN")){
 					String[] inputs = input.split(" ");
 					try{
 						Node nodeDown = new Node(getRawIP(inputs[1]), Integer.parseInt(inputs[2]));
 						p("LINKingDOWN " + inputs[1] + " " +  inputs[2]);
 						if (routingTable.get(nodeDown) != null) {
-							messageCount = 1;
-							if(nodeUpTable.get(nodeDown) != null){
-								nodeUpTable.remove(nodeDown);
-							}
+							//messageCount = 1;
 							int temp = 0;
 							temp = routingTable.get(nodeDown);
 							nodeDownTable.put(nodeDown, temp);
-							nodeDownTable2.put(nodeDown, temp);
-							p(nodeDownTable);
+							//nodeDownTable2.put(nodeDown, temp);
 							graph.remove(new Edge(me, nodeDown));
 							graph.put(new Edge(me, nodeDown), INFINITY);
 						} else {
@@ -138,10 +131,17 @@ public class BFClient implements Runnable{
 					String output = "";
 					for (Enumeration<Node> e = routingTable.keys(); e.hasMoreElements();){
 						Node to = e.nextElement();
+						int cost = routingTable.get(to);
+						String costS = cost + "";
+						if (cost == INFINITY){
+							costS = "INFINITY";
+						}
 						if(to.link != null){
-							output += "Destination = " + to.ip.toString().substring(1) + ":" + to.port + ", Cost = " + routingTable.get(to) + ", Link = (" + to.link.ip.toString().substring(1) + ":" + to.link.port + ")\n";
+
+
+							output += "Destination = " + to.ip.toString().substring(1) + ":" + to.port + ", Cost = " + costS + ", Link = (" + to.link.ip.toString().substring(1) + ":" + to.link.port + ")\n";
 						} else {
-							output += "Destination = " + to.ip.toString().substring(1) + ":" + to.port + ", Cost = " + routingTable.get(to) + ", Link = (" + to.ip.toString().substring(1) + ":" + to.port + ")\n";
+							output += "Destination = " + to.ip.toString().substring(1) + ":" + to.port + ", Cost = " + costS + ", Link = (" + to.ip.toString().substring(1) + ":" + to.port + ")\n";
 						}
 					}
 					p(output);
@@ -158,12 +158,9 @@ public class BFClient implements Runnable{
 		}
 	}
 
-	//LINKDOWN localhost 9002
-	//LINKUP localhost 9002
 	public void run(){
 		if(threadType.equals("send")){
 			while(true){
-				p("sending");
 				for (Enumeration<Node> e = routingTable.keys(); e.hasMoreElements();){
 					Node to = e.nextElement();
 					Node me = new Node(ip, localPort);
@@ -175,40 +172,33 @@ public class BFClient implements Runnable{
 						}
 						setInt(bytes, 4, localPort);
 						try{
-							if(nodeDownTable.get(to) == null && nodeUpTable.get(to) == null){
-								byte[] tablebytes = serialize(routingTable);
-								for(int i = 0; i<tablebytes.length; i++){
-			  						 bytes[i+8] = tablebytes[i];
-			  					}
-							}
-							p(to);
-							if(messageCount == 1){
-								p("node down table" + nodeDownTable);
-								if(nodeDownTable.get(to) != null){
-									p("sending down code!");
-									setInt(bytes, 2395, 1337);
-								}
-								p("node up table" + nodeUpTable);
-								if(nodeUpTable.get(to) != null){
-									p("sending up code!");
-									nodeUpTable.remove(to);
-									setInt(bytes, 2395, 9779);
-								}
-								messageCount--;
-							}
+							// if(nodeDownTable.get(to) == null && nodeUpTable.get(to) == null){
+							byte[] tablebytes = serialize(routingTable);
+							for(int i = 0; i<tablebytes.length; i++){
+			  					 bytes[i+8] = tablebytes[i];
+			  				}
+							// }
+							// if(messageCount == 1){
+							// 	if(nodeDownTable.get(to) != null){
+							// 		setInt(bytes, 2395, 1337);
+							// 	}
+							// 	if(nodeUpTable.get(to) != null){
+							// 		nodeUpTable.remove(to);
+							// 		setInt(bytes, 2395, 9779);
+							// 	}
+							// 	messageCount--;
+							// }
 							
-							if(routingTable.get(to) != INFINITY){
+							if(routingTable.get(to) != INFINITY && nodeDownTable.get(to) == null){
 								DatagramPacket packet = new DatagramPacket(bytes, bytes.length, to.ip, to.port);
 								DatagramSocket datagramSocket = new DatagramSocket();
 								datagramSocket.send(packet);
-							} else if(nodeDownTable.get(to) != null || nodeUpTable.get(to) != null) {
-								DatagramPacket packet = new DatagramPacket(bytes, bytes.length, to.ip, to.port);
-								DatagramSocket datagramSocket = new DatagramSocket();
-								datagramSocket.send(packet);
-							} else{
-								//LINKDOWN localhost 9002
-								//LINKUP localhost 9002
-							}
+							} //else if(nodeDownTable.get(to) != null || nodeUpTable.get(to) != null) {
+							// 	DatagramPacket packet = new DatagramPacket(bytes, bytes.length, to.ip, to.port);
+							// 	DatagramSocket datagramSocket = new DatagramSocket();
+							// 	datagramSocket.send(packet);
+							// } else{
+							// }
 						} catch (Exception errorSend){
 							errorSend.printStackTrace();
 						}
@@ -230,10 +220,8 @@ public class BFClient implements Runnable{
   					listenSocket.receive(receivePacket);
   					byte[] bytes = receivePacket.getData();
   					byte[] tablebytes = new byte[1024];
-  					//byte[] ipbytes = new byte[4];
   					byte[] portbytes = new byte[4];
   					for(int i = 0; i< 4; i++){
-  					//	ipbytes[i] = bytes[i];
   						portbytes[i] = bytes[i+4];
   					}
   					for(int i = 0; i<tablebytes.length; i++){
@@ -244,35 +232,24 @@ public class BFClient implements Runnable{
 					Node from = new Node(ipRec, portRec);
 					Node me = new Node(ip, localPort);
 					timeoutTable.put(from, System.currentTimeMillis());
-  					if(getInt(bytes, 2395) == 1337){
-  						if (routingTable.get(from) != null) {
-							if(nodeUpTable.get(from) == null){
-								nodeDownTable.put(from, routingTable.get(from));
-								graph.remove(new Edge(me, from));
-								graph.put(new Edge(me, from), INFINITY);
-							}
-						}
-  					} else if(getInt(bytes, 2395) == 9779){
-  						p("here is the down table " + nodeDownTable);
-  						p("here is from" + from);
-  						p("recieved code");
-  						graph.put(new Edge(me, from), nodeDownTable.get(from));
-  						nodeDownTable.remove(from);
-
+  				// 	if(getInt(bytes, 2395) == 1337){
+  				// 		if (routingTable.get(from) != null) {
+						// 	if(nodeUpTable.get(from) == null){
+						// 		nodeDownTable.put(from, routingTable.get(from));
+						// 		graph.remove(new Edge(me, from));
+						// 		graph.put(new Edge(me, from), INFINITY);
+						// 	}
+						// }
+  				// 	} else if(getInt(bytes, 2395) == 9779){
+  				// 		graph.put(new Edge(me, from), nodeDownTable.get(from));
+  				// 		nodeDownTable.remove(from);
+					if(false){
   					} else {
   						if(nodeDownTable.get(from) != null){
   							//
   						}else{
-  							if(nodeUpTable.contains(from)){
-  								nodeUpTable.remove(from);
-  							}
 		  					@SuppressWarnings("unchecked")
 							Hashtable<Node, Integer> receivedTable = ((Hashtable<Node, Integer>)deserialize(tablebytes));
-							//p("this is te receivedTable");
-							//p(receivedTable);
-							//p("graph before" + graph);
-							p("portRec " + portRec);
-							// p("receivedTable" + receivedTable);
 							for (Enumeration<Node> e = receivedTable.keys(); e.hasMoreElements();){
 								Node to = e.nextElement();
 
@@ -282,8 +259,6 @@ public class BFClient implements Runnable{
 								} else {
 									toFrom = new Edge(to, from, to.link);
 								}
-								//p("to.port looking for 9002" + to.port);
-								//p("to.port value = " + receivedTable.get(toFrom));
 
 								if(to.link != null && graph.get(to) != null){
 									if(graph.get(to) == INFINITY && to.link.equals(me)){
@@ -310,10 +285,7 @@ public class BFClient implements Runnable{
 									if(to2.link != null){
 										if(toFrom.hasLink()){
 											if(to.equals(to2)){
-												p("to = " + to);
-												p("to2 = " + to2);
 												if(to.link.equals(me) && to2.link.equals(from)){
-													p("test3");
 													graph.remove(new Edge(me, to));
 													graph.remove(new Edge(from, to));
 													graph.put(new Edge(me, to), INFINITY);
@@ -325,58 +297,36 @@ public class BFClient implements Runnable{
 								}
 							}
   						}
-					// p("graph now = " + graph);
   					} //else for linkdown
   				}
   			} catch (Exception e){
-  				//e.printStackTrace();
+  				printStackTrace(e);
   			}
 		}
 		if(threadType.equals("algorithm")){
 			while(true){
-				wait(1);
+				int wait = ((int)(timeout/1000));
+				if(wait < 1){
+					wait = 1;
+				}
+				wait(wait);
 
 				if(!update){
 					Hashtable<Edge, Integer> tempGraph = graphDeepCopy(graph);
 					Hashtable<Node, Integer> tempTable = routingDeepCopy(routingTable);
 					Hashtable<Node, Integer> oldTable = routingDeepCopy(routingTable);
-					// p("before" + tempGraph);
 					tempGraph = bellmanFord(tempGraph);
-					// p("after " + tempGraph);
-					
-					// p("this is tempGraph" + tempGraph);
-					// p("this is graph" + graph);
 					tempTable = updateRoutingTable(tempGraph);
-					// p("tempTable" + tempTable);
-					
-					//p("");
-					//p("oldTable" + oldTable);
-					p("routingTable" + routingTable);
-
-					//p("tables equal? = " + tempTable.equals(oldTable));
 					if(!tempTable.equals(oldTable)){
 						routingTable = routingDeepCopy(tempTable);
 						update = true;
 					}
-					//p("timeout table " + timeoutTable);
 					if(checkTimeOuts()){
-						p("hello");
 						update = true;
 					}
 				}
 			}
 		}
-		// if(threadType.equals("timer")){
-		// 	while(update == 0){
-		// 		if(checkTimeOuts()){
-		// 			p("hello");
-		// 			update++;
-		// 		}
-		// 		wait(3);
-		// 		p(timeoutTable);
-		// 	}
-		// }
-		
 	}
 
 	public static Hashtable<Edge, Integer> bellmanFord(Hashtable<Edge, Integer> graph){
@@ -420,8 +370,6 @@ public class BFClient implements Runnable{
 						tempGraph.put(aToCLinkB, graph.get(aToB) + graph.get(to));
 					}
 				}
-				//p("has link" + aToBLinkC.hasLink());
-				//p(aToBLinkC);
 				if(graph.get(aToC) != null){
 					if(graph.get(aToC) + graph.get(to) < tempGraph.get(aToB)){
 						tempGraph.remove(aToBLinkC);
@@ -447,11 +395,9 @@ public class BFClient implements Runnable{
 		for (Enumeration<Node> e = timeoutTable.keys(); e.hasMoreElements();){
 			Node node = e.nextElement();
 			if(nodeTimeOut(timeoutTable.get(node))){
+				timeoutTable.put(node, System.currentTimeMillis());
 				timeouts = true;
 				routingTable.put(node, INFINITY);
-				p("node" + node.port);
-				p("me" + me.port);
-				// graph.remove(new Edge(node, me));
 				graph.put(new Edge(node, me), INFINITY);
 			}
 		}
@@ -473,8 +419,6 @@ public class BFClient implements Runnable{
 			Edge to = e.nextElement();
 			if(to.hasNode(me)){
 				Node from = to.otherNode(me);
-				//p("from port = " + from.port);
-				//p(graph.get(to));
 				if(to.hasLink()){
 					tempTable.put(new Node(from, to.link), graph.get(to));
 				} else {
@@ -544,5 +488,7 @@ public class BFClient implements Runnable{
 	}
 	public static void p(Object o){ //print for lazy people
 		System.out.println(o);
+	}
+	public static void printStackTrace(Exception e){ //supresses one warning
 	}
 }
